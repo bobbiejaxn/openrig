@@ -904,7 +904,7 @@ export function reconcileSkillLoadout(input: {
     const target = nodePath.join(targetRoot, skill.id);
     const prior = owned.get(skill.id);
     let { status, detail } = classifySkillProjectionTarget(skill, prior, target);
-    if (status === "conflicting" && skill.pluginId && prior && pluginIdOf(prior.revision) === skill.pluginId) {
+    if (status === "conflicting" && skill.pluginId && prior) {
       keptOwned.add(skill.id);
       status = "shadowed";
       detail = `${KEPT_DETAIL}this copy was changed after OpenRig projected it; plugin ${skill.pluginId}'s copy was not projected`;
