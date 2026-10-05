@@ -832,6 +832,28 @@ describe("plugin skills in the managed loadout", () => {
     expect(readFileSync(target, "utf8")).toBe(catalogBytes);
   });
 
+  it("does not keep an edited same-name catalog copy under a plugin seat's selection", () => {
+    const f = fixture([]);
+    writeSkill(f.catalog, "queue-handoff");
+    commit(f.root);
+    const catalog = resolveSkillLoadout({ catalogRoot: f.catalog, topologySkills: ["queue-handoff"] });
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(reconcileSkillLoadout({ loadout: catalog.loadout, runtime: "codex", cwd: f.project, topologyOwner: "dev-a", apply: true }).ok).toBe(true);
+    const target = join(f.project, ".agents", "skills", "queue-handoff", "SKILL.md");
+    writeFileSync(target, "operator edit\n");
+
+    // Another seat's plugin supplies its own queue-handoff.
+    const plugin = writePlugin(f.root, [".codex-plugin"], ["queue-handoff"]);
+    writeSkill(join(plugin, "skills"), "queue-handoff", "queue-handoff", "# the plugin's own bytes\n");
+    const entries = resolvePluginSkills({ pluginId: "core", pluginRoot: plugin, runtime: "codex" }).entries;
+    const other = reconcileSkillLoadout({ loadout: loadoutOf(entries, f.root), runtime: "codex", cwd: f.project, topologyOwner: "dev-b", apply: true });
+    expect(other).toMatchObject({ ok: false, errors: [{ code: "target_conflict" }] });
+    expect(readFileSync(target, "utf8")).toBe("operator edit\n");
+    const manifest = JSON.parse(readFileSync(join(f.project, ".openrig", "skill-loadouts", "codex.json"), "utf8")) as { topologySelections: Record<string, string[]> };
+    expect(manifest.topologySelections).toEqual({ "dev-a": ["queue-handoff"] });
+  });
+
   it("returns no plugin skills, with a warning, when the plugin's skills path is not a readable folder", () => {
     const f = fixture([]);
     const plugin = join(f.root, "plugins", "core");
