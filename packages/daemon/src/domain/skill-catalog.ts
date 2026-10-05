@@ -936,7 +936,7 @@ export function reconcileSkillLoadout(input: {
       }
       // A plugin copy OpenRig owns whose source moved on (an upgrade, or a moved plugin
       // folder) keeps its record and waits for a seat that selects the plugin to refresh it.
-      if (status === "conflicting" && skill.pluginId && prior) {
+      if (status === "conflicting" && skill.pluginId && prior && pluginIdOf(prior.revision) === skill.pluginId) {
         keptOwned.add(skill.id);
         status = "shadowed";
         detail = `${KEPT_DETAIL}plugin ${skill.pluginId} changed or moved since OpenRig projected this copy; a seat that selects the plugin refreshes it at its next launch`;
