@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -767,6 +767,48 @@ describe("plugin skills in the managed loadout", () => {
     expect(result.receipts).toEqual([expect.objectContaining({ id: "queue-handoff", status: "shadowed", target: own, detail: expect.stringMatching(/^kept: /) })]);
     expect(readdirSync(join(f.project, ".claude", "skills"))).toEqual(["Queue-Handoff"]);
     expect(git(f.root, "status", "--porcelain", "--untracked-files=all")).toContain("project/.claude/skills/Queue-Handoff/SKILL.md");
+  });
+
+  it("keeps a deleted plugin copy whose source changed for another seat, and lets the owner refresh it (review replay)", () => {
+    const f = fixture([]);
+    const plugin = writePlugin(f.root, [".claude-plugin"], ["queue-handoff"]);
+    const resolve = () => loadoutOf(resolvePluginSkills({ pluginId: "core", pluginRoot: plugin, runtime: "claude-code" }).entries, f.root);
+    expect(reconcileSkillLoadout({ loadout: resolve(), runtime: "claude-code", cwd: f.project, topologyOwner: "dev-a", apply: true }).ok).toBe(true);
+    const manifestPath = join(f.project, ".openrig", "skill-loadouts", "claude-code.json");
+    const ownedBefore = JSON.parse(readFileSync(manifestPath, "utf8")).skills;
+    // An upgrade changes the plugin's bytes, and the ignored copy is cleaned away.
+    writeSkill(join(plugin, "skills"), "queue-handoff", "queue-handoff", "# newer plugin bytes\n");
+    const copy = join(f.project, ".claude", "skills", "queue-handoff");
+    mkdirSync(join(f.root, "cleaned"));
+    renameSync(copy, join(f.root, "cleaned", "queue-handoff"));
+
+    // Seat B shares the folder and does not select the plugin.
+    const other = reconcileSkillLoadout({ loadout: loadoutOf([], f.root), runtime: "claude-code", cwd: f.project, topologyOwner: "dev-b", apply: true });
+    expect(other).toMatchObject({ ok: true, errors: [] });
+    expect(other.receipts).toEqual([expect.objectContaining({ id: "queue-handoff", status: "shadowed", detail: expect.stringMatching(/^kept: /) })]);
+    expect(existsSync(copy)).toBe(false);
+    expect(JSON.parse(readFileSync(manifestPath, "utf8")).skills).toEqual(ownedBefore);
+
+    // Seat A's next launch projects the new bytes and refreshes the record.
+    const owner = reconcileSkillLoadout({ loadout: resolve(), runtime: "claude-code", cwd: f.project, topologyOwner: "dev-a", apply: true });
+    expect(owner).toMatchObject({ ok: true, applied: true, errors: [] });
+    expect(readFileSync(join(copy, "SKILL.md"), "utf8")).toContain("newer plugin bytes");
+  });
+
+  it("still refuses a deleted catalog copy whose source changed, as before", () => {
+    const f = fixture([]);
+    writeSkill(f.catalog, "managed");
+    commit(f.root);
+    const selected = resolveSkillLoadout({ catalogRoot: f.catalog, topologySkills: ["managed"] });
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) return;
+    expect(reconcileSkillLoadout({ loadout: selected.loadout, runtime: "codex", cwd: f.project, topologyOwner: "dev-a", apply: true }).ok).toBe(true);
+    writeFileSync(join(f.catalog, "managed", "SKILL.md"), "---\nname: managed\ndescription: Use when testing managed.\n---\n\n# changed\n");
+    mkdirSync(join(f.root, "cleaned"));
+    renameSync(join(f.project, ".agents", "skills", "managed"), join(f.root, "cleaned", "managed"));
+
+    const other = reconcileSkillLoadout({ loadout: loadoutOf([], f.root), runtime: "codex", cwd: f.project, topologyOwner: "dev-b", apply: true });
+    expect(other).toMatchObject({ ok: false, errors: [{ code: "target_conflict" }] });
   });
 
   it("returns no plugin skills, with a warning, when the plugin's skills path is not a readable folder", () => {
