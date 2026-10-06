@@ -334,7 +334,7 @@ describe("Restore check routes", () => {
     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "restore-check-route-hook-cwd-"));
     const settingsDir = path.join(projectDir, ".claude");
     const settingsPath = path.join(settingsDir, "settings.local.json");
-    const relayPath = path.join(projectDir, ".openrig", "hooks", "scripts", "activity-relay.cjs");
+    const relayPath = path.join(openRigHome, "state", "claude-activity-hooks", "activity-relay.cjs");
     fs.mkdirSync(settingsDir, { recursive: true });
     fs.mkdirSync(path.dirname(relayPath), { recursive: true });
     fs.writeFileSync(relayPath, "// test relay\n");
