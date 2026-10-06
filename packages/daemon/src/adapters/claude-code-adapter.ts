@@ -940,7 +940,10 @@ export class ClaudeCodeAdapter implements RuntimeAdapter {
     //    PREVALIDATED relay event (derived from the canonical manifest above).
     if (deliverable) {
       this.fs.mkdirp(nodePath.dirname(relayDest));
-      this.fs.copyFile(this.activityRelayPath!, relayDest);
+      // Sibling seats share this relay. Do not truncate identical bytes while a hook reads it.
+      if (!this.fs.exists(relayDest) || this.fs.readFile(relayDest) !== this.fs.readFile(this.activityRelayPath!)) {
+        this.fs.copyFile(this.activityRelayPath!, relayDest);
+      }
       this.preserveMode(this.activityRelayPath!, relayDest);
       for (const { event, timeout } of derivedEvents) {
         const groups = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : [];

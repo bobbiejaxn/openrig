@@ -144,6 +144,23 @@ describe("Claude activity-hook delivery — shipped relay asset executable mode 
 });
 
 describe("Claude activity-hook delivery — ENABLE (entry present, source + manifest readable)", () => {
+  it("leaves identical shared relay bytes alone and refreshes a changed installed asset", async () => {
+    const fs = enableFs();
+    const copy = fs.copyFile;
+    let copies = 0;
+    fs.copyFile = (src, dest) => { copies++; copy(src, dest); };
+    const adapter = makeAdapter(fs);
+    await adapter.project(plan([activityEntry()]), binding());
+    expect(copies).toBe(1);
+    await adapter.project(plan([activityEntry()]), binding("/sibling-project"));
+    expect(copies).toBe(1);
+    fs._store[RELAY_SRC] = "// updated relay";
+    await adapter.project(plan([activityEntry()]), binding());
+    expect(copies).toBe(2);
+    expect(fs._store[RELAY_DEST]).toBe("// updated relay");
+    expect(fs._modes[RELAY_DEST]! & 0o777).toBe(0o755);
+  });
+
   it("copies the relay outside cwd into the configured instance at mode 0755", async () => {
     const fs = enableFs();
     await makeAdapter(fs).project(plan([activityEntry()]), binding());
